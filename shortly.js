@@ -2,6 +2,9 @@ var express = require('express');
 var util = require('./lib/utility');
 var partials = require('express-partials');
 var bodyParser = require('body-parser');
+var session = require('express-session');
+var cookieParser = require('cookie-parser');
+var bcrypt = require('bcrypt-nodejs');
 
 
 var db = require('./app/config');
@@ -22,25 +25,73 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(__dirname + '/public'));
 
+//Session
 
-app.get('/', 
-function(req, res) {
-  res.render('index');
-});
+app.use(cookieParser('Shhhhhhkudhiyhdoiqadhyoiqyhdfoiqwydoiqwyd'));
+app.use(session());
 
-app.get('/create', 
+app.get('/',
 function(req, res) {
-  res.render('index');
-});
-
-app.get('/links', 
-function(req, res) {
-  Links.reset().fetch().then(function(links) {
-    res.send(200, links.models);
+  restrict(req,res,function(){
+    res.render('index');
   });
 });
+//--------------------------
+app.get('/signout',
+function(req, res) {
+  console.log('IT WORKSSSSSSS');
+  req.session.destroy(function(){
+        res.redirect('/');
+    });
+  // restrict(req,res,function(){
+  //   res.render('index');
+  // });
+});
 
-app.post('/links', 
+app.get('/login',
+function(req, res) {
+  res.render('login');
+});
+
+app.get('/signup',
+function(req, res) {
+  res.render('signup');
+});
+
+app.post('/signup', function(req, res){
+  var username = req.body.username;
+  var password = req.body.password;
+  var _res = res;
+  bcrypt.hash(password, null, null, function(err, hash) {
+    // Store hash in your password DB.
+    db.knex('users')
+      .insert({
+        name:username,
+        password:hash
+      }).then(function(){
+        _res.redirect('/');
+      });
+  });
+
+});
+
+//---------------------------------------
+
+app.get('/create',
+function(req, res) {
+  res.render('index');
+});
+
+app.get('/links',
+function(req, res) {
+  restrict(req,res,function(){
+    Links.reset().fetch().then(function(links) {
+      res.send(200, links.models);
+    });
+  })
+});
+
+app.post('/links',
 function(req, res) {
   var uri = req.body.url;
 
@@ -77,7 +128,49 @@ function(req, res) {
 /************************************************************/
 // Write your authentication routes here
 /************************************************************/
+function restrict(req, res, next) {
+  // console.log(req.session.user);
+  if (req.session.user) {
+    next();
+  } else {
+    req.session.error = 'Access denied!';
+    res.redirect('/login');
+  }
+}
 
+app.post('/login', function(request, response) {
+
+    var username = request.body.username;
+    var password = request.body.password;
+    console.log('request',username,password);
+    // res == true
+    db.knex('users').where({
+      'name':username
+    }).then(function(user){
+        console.log('ssssssss',user);
+        if(user.length > 0){
+          bcrypt.compare(password, user[0].password, function(err, res) {
+            if(res){
+              request.session.regenerate(function(){
+                request.session.user = username;
+                response.redirect('/');
+                console.log('Password Checked')
+              });
+            }else{
+              console.log('Wrong password')
+              response.redirect('/signup');
+            }
+          });
+
+        }else{
+          console.log('Could not find user')
+        }
+      })
+});
+
+app.get('/restricted', restrict, function(request, response){
+  response.send('This is the restricted area! Hello ' + request.session.user + '! click <a href="/logout">here to logout</a>');
+});
 
 
 /************************************************************/
